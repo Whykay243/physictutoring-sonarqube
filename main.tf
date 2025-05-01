@@ -133,7 +133,7 @@ resource "aws_instance" "tomcat_server" {
 }
 
 # Sonaqube Server
-resource "aws_instance" "sonaqube_server" {
+resource "aws_instance" "sonarqube_server" {
   ami                         = data.aws_ami.ubuntu.id
   instance_type               = "t3.medium"          # upgraded from t2.micro
   subnet_id                   = module.vpc.public_subnets[2]
@@ -141,10 +141,10 @@ resource "aws_instance" "sonaqube_server" {
   key_name                    = "whykayKP"
   associate_public_ip_address = true
   #availability_zone           = "us-east-1c"
-  user_data                   = file("sonaqubeinstall.sh")
+  user_data                   = file("sonarqubeinstall.sh")
 
   tags = {
-    Name = "sonaqube_Server"
+    Name = "sonarqube_Server"
   }
 }
 
