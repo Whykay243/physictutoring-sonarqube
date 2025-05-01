@@ -1,105 +1,148 @@
 #!/bin/bash
 set -euo pipefail
 
-# 0. RAM check
-if [ "$(free -m | awk '/^Mem:/{print $2}')" -lt 2000 ]; then
-  echo "⚠️  SonarQube recommends ≥2 GB RAM. Continuing anyway…"
+LOGFILE=/var/log/sonarqube_install.log
+exec > >(tee -a "$LOGFILE") 2>&1
+
+echo "=== SonarQube Installation Script Started ==="
+
+# 1. Must run as root
+if [ "$(id -u)" -ne 0 ]; then
+    echo "ERROR: This script must be run as root." >&2
+    exit 1
 fi
 
-echo "🔧 Backing up & tuning sysctl for SonarQube/Elasticsearch…"
-sudo cp /etc/sysctl.conf /etc/sysctl.conf.bak.$(date +%F_%T)
+# Variables (customize as needed)
+SONAR_VERSION="25.2.0.102705"      # e.g., 2025 LTA
+DB_USER="sonar"
+DB_PASS="${DB_PASS:-ChangeMe123}"  # Set DB_PASS env or change here
+DB_NAME="sonarqube"
 
-# Ensure each setting only appears once
-for setting in \
-  "vm.max_map_count=262144" \
-  "fs.file-max=65536" \
-  "ulimit -n 65536" \
-  "ulimit -u 4096"
-do
-  grep -qF "$setting" /etc/sysctl.conf || echo "$setting" | sudo tee -a /etc/sysctl.conf
-done
+echo "[Info] Updating package lists..."
+apt-get update -y
 
-sudo sysctl -p
-
-echo "📥 Updating apt and installing prerequisites…"
-sudo apt update -y
-sudo apt install -y openjdk-17-jdk wget unzip ca-certificates lsb-release
-
-echo "📦 Installing PostgreSQL…"
-# Import the repo’s signing key and add its repo with signed-by
-PG_KEYRING=/usr/share/keyrings/pgdg-archive-keyring.gpg
-sudo wget -qO- https://www.postgresql.org/media/keys/ACCC4CF8.asc \
-  | gpg --dearmor | sudo tee "$PG_KEYRING" >/dev/null
-
-echo "deb [signed-by=$PG_KEYRING] http://apt.postgresql.org/pub/repos/apt \
-  $(lsb_release -cs)-pgdg main" \
-  | sudo tee /etc/apt/sources.list.d/pgdg.list
-
-sudo apt update -y
-sudo apt install -y postgresql-14 postgresql-client-14
-
-echo "🗄️  Configuring PostgreSQL for SonarQube…"
-sudo systemctl enable --now postgresql
-sudo -u postgres psql <<EOF
-CREATE USER sonar WITH ENCRYPTED PASSWORD 'sonarpass';
-CREATE DATABASE sonarqube OWNER sonar ENCODING 'UTF8' LC_COLLATE='en_US.utf8' LC_CTYPE='en_US.utf8';
-GRANT ALL PRIVILEGES ON DATABASE sonarqube TO sonar;
+# 2. Sysctl tuning for Elasticsearch (SonarQube requirement: vm.max_map_count>=524288, fs.file-max>=131072)
+SYSCTL_FILE="/etc/sysctl.d/99-sonarqube.conf"
+echo "[Info] Configuring sysctl settings..."
+cat > "$SYSCTL_FILE" <<EOF
+vm.max_map_count=524288
+fs.file-max=131072
 EOF
+sysctl -p "$SYSCTL_FILE"
 
-echo "👤 Creating SonarQube system user…"
-sudo useradd -m -d /opt/sonarqube -U -s /bin/bash sonarqube || true
+# 3. Install Java 17, wget, unzip
+echo "[Info] Installing OpenJDK 17, wget, unzip..."
+apt-get install -y openjdk-17-jdk wget unzip gnupg2
 
-SONAR_VER="10.3.0.82913"
-SONAR_ZIP="sonarqube-${SONAR_VER}.zip"
-SONAR_URL="https://binaries.sonarsource.com/Distribution/sonarqube/${SONAR_ZIP}"
+# 4. Add PostgreSQL APT repo and install PostgreSQL 14
+echo "[Info] Adding PostgreSQL APT repository..."
+mkdir -p /usr/share/keyrings
+wget -qO - https://www.postgresql.org/media/keys/ACCC4CF8.asc | gpg --dearmor > /usr/share/keyrings/pgdg-postgresql.gpg
+echo "deb [signed-by=/usr/share/keyrings/pgdg-postgresql.gpg] http://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" \
+    > /etc/apt/sources.list.d/pgdg.list
+apt-get update -y
+echo "[Info] Installing PostgreSQL 14..."
+apt-get install -y postgresql-14
 
-echo "⬇️ Downloading SonarQube ${SONAR_VER}…"
-cd /tmp
-wget -q "$SONAR_URL"
-unzip -q "$SONAR_ZIP"
-sudo mv "sonarqube-${SONAR_VER}" /opt/sonarqube
+echo "[Info] Enabling and starting PostgreSQL..."
+systemctl enable --now postgresql
 
-echo "⚙️  Configuring JDBC settings…"
-sudo tee -a /opt/sonarqube/conf/sonar.properties >/dev/null <<EOF
+# 5. Create PostgreSQL user and database for SonarQube (idempotent)
+echo "[Info] Setting up PostgreSQL user and database..."
+sudo -u postgres psql -tc "SELECT 1 FROM pg_roles WHERE rolname = '$DB_USER'" | grep -q 1 || \
+    sudo -u postgres psql -c "CREATE USER $DB_USER WITH ENCRYPTED PASSWORD '$DB_PASS';"
 
-#— PostgreSQL settings
-sonar.jdbc.username=sonar
-sonar.jdbc.password=sonarpass
-sonar.jdbc.url=jdbc:postgresql://localhost:5432/sonarqube
-EOF
+sudo -u postgres psql -tc "SELECT 1 FROM pg_database WHERE datname = '$DB_NAME'" | grep -q 1 || \
+    sudo -u postgres psql -c "CREATE DATABASE $DB_NAME OWNER $DB_USER ENCODING 'UTF8' LC_COLLATE='en_US.utf8' LC_CTYPE='en_US.utf8' TEMPLATE=template0;"
 
-echo "🔐 Setting ownership and permissions…"
-sudo chown -R sonarqube:sonarqube /opt/sonarqube
-sudo chmod -R 755 /opt/sonarqube
+sudo -u postgres psql -c "GRANT ALL PRIVILEGES ON DATABASE $DB_NAME TO $DB_USER;"
 
-echo "🧩 Creating systemd service unit…"
-sudo tee /etc/systemd/system/sonarqube.service >/dev/null <<EOF
+# 6. Download and install SonarQube
+SONAR_HOME="/opt/sonarqube"
+if [ -d "$SONAR_HOME" ]; then
+    echo "[Info] SonarQube directory already exists at $SONAR_HOME; skipping download."
+else
+    echo "[Info] Downloading SonarQube version $SONAR_VERSION..."
+    cd /tmp
+    wget -q "https://binaries.sonarsource.com/Distribution/sonarqube/sonarqube-$SONAR_VERSION.zip"
+    echo "[Info] Extracting SonarQube..."
+    unzip -q "sonarqube-$SONAR_VERSION.zip"
+    mv "sonarqube-$SONAR_VERSION" "$SONAR_HOME"
+    rm "sonarqube-$SONAR_VERSION.zip"
+fi
+
+# 7. Create sonar user and set ownership
+echo "[Info] Creating sonar user and setting file permissions..."
+if ! id -u sonarqube &>/dev/null; then
+    adduser --system --no-create-home --group --disabled-login sonarqube
+fi
+chown -R sonarqube:sonarqube "$SONAR_HOME"
+
+# 8. Configure sonar.properties for PostgreSQL
+echo "[Info] Configuring sonar.properties..."
+PROPS_FILE="$SONAR_HOME/conf/sonar.properties"
+# Backup original properties file once
+if [ ! -f "$PROPS_FILE.original" ]; then
+    cp "$PROPS_FILE" "$PROPS_FILE.original"
+fi
+
+# Set JDBC settings (commented lines are un-commented/updated)
+sed -i "s|^#\?sonar.jdbc.username=.*|sonar.jdbc.username=$DB_USER|" "$PROPS_FILE"
+sed -i "s|^#\?sonar.jdbc.password=.*|sonar.jdbc.password=$DB_PASS|" "$PROPS_FILE"
+sed -i "s|^#\?sonar.jdbc.url=.*|sonar.jdbc.url=jdbc:postgresql://localhost:5432/$DB_NAME|" "$PROPS_FILE"
+
+# Ensure SonarQube listens on all interfaces (not just localhost)
+if ! grep -q "^sonar.web.host=" "$PROPS_FILE"; then
+    echo "sonar.web.host=0.0.0.0" >> "$PROPS_FILE"
+else
+    sed -i "s|^sonar.web.host=.*|sonar.web.host=0.0.0.0|" "$PROPS_FILE"
+fi
+# Default port is 9000; set explicitly for clarity
+if ! grep -q "^sonar.web.port=" "$PROPS_FILE"; then
+    echo "sonar.web.port=9000" >> "$PROPS_FILE"
+else
+    sed -i "s|^sonar.web.port=.*|sonar.web.port=9000|" "$PROPS_FILE"
+fi
+
+chown sonarqube:sonarqube "$PROPS_FILE"
+
+# 9. Create systemd service for SonarQube
+echo "[Info] Creating systemd service unit..."
+SERVICE_FILE="/etc/systemd/system/sonarqube.service"
+cat > "$SERVICE_FILE" <<EOF
 [Unit]
 Description=SonarQube service
-After=network.target postgresql.service
+After=network.target
 
 [Service]
 Type=forking
-ExecStart=/opt/sonarqube/bin/linux-x86-64/sonar.sh start
-ExecStop=/opt/sonarqube/bin/linux-x86-64/sonar.sh stop
+ExecStart=$SONAR_HOME/bin/linux-x86-64/sonar.sh start
+ExecStop=$SONAR_HOME/bin/linux-x86-64/sonar.sh stop
 User=sonarqube
 Group=sonarqube
+PermissionsStartOnly=true
 Restart=always
-LimitNOFILE=65536
-LimitNPROC=4096
+LimitNOFILE=131072
+LimitNPROC=8192
+TimeoutStartSec=5
+SuccessExitStatus=143
 
 [Install]
 WantedBy=multi-user.target
 EOF
 
-echo "🚀 Enabling & starting SonarQube…"
-sudo systemctl daemon-reload
-sudo systemctl enable --now sonarqube
+systemctl daemon-reload
 
-# Optionally open UFW port
-if command -v ufw &>/dev/null && ufw status | grep -q "Status: active"; then
-  echo "🔐 Allowing TCP/9000 in UFW…"
-  sudo ufw allow 9000/tcp
+# 10. Enable and start SonarQube
+echo "[Info] Enabling and starting SonarQube service..."
+systemctl enable --now sonarqube
+
+# 11. UFW rule for port 9000
+if command -v ufw >/dev/null 2>&1 && ufw status | grep -q "Status: active"; then
+    echo "[Info] Adding UFW rule to allow port 9000..."
+    ufw allow 9000/tcp || echo "[Info] UFW rule for port 9000 already exists."
+else
+    echo "[Info] UFW not active or not installed; skipping firewall configuration."
 fi
 
-echo "✅ Done! Access SonarQube at: http://$(hostname -I | awk '{print $1}'):9000"
+echo "=== SonarQube Installation Completed Successfully ==="
