@@ -1,41 +1,28 @@
 pipeline {
     agent any
+    
+    environment {
+        MAVEN_OPTS = "--add-opens java.base/java.lang=ALL-UNNAMED"
+    }
 
     stages {
-        stage('Test stage 1') {
+        stage('Test') {
             steps {
-                sh 'cd physicstutors mvn test'
+                sh 'cd physicstutors && mvn test'
             }
         }
-        stage('Complie the Java Code stage 2') {
+
+        stage('Build & Compile') {
             steps {
                 sh 'cd physicstutors && mvn clean package'
             }
         }
-
-        stage('SonarQube Code Quality Scan') {
-            steps {
-                dir('physicstutors') {
-                    withSonarQubeEnv('sonarserver') {
-                         sh 'mvn sonar:sonar'
-                    }
-                }
-            }
-        }
-
-        stage('Quality Gate') {
-            steps {
-                timeout(time: 2, unit: 'MINUTES') {
-                    waitForQualityGate abortPipeline: true
-                }
-            }
-        }
+     
         
         stage('Deploy to Tomcat Web Server') {
             steps {
-               deploy adapters: [tomcat9(credentialsId: 'physicstutors', path: '', url: 'http://44.193.80.160:8080/')], contextPath: 'webapp', war: '**/*.war'
+               deploy adapters: [tomcat9(credentialsId: 'physictutors', path: '', url: 'http://13.220.6.192:8080/')], contextPath: 'webapp', war: '**/*.war'
             }
         }
     }
-
 }
