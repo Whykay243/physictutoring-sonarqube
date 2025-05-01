@@ -12,7 +12,24 @@ pipeline {
                 sh 'cd physicstutors && mvn clean package'
             }
         }
-     
+
+        stage('SonarQube Code Quality Scan') {
+            steps {
+                dir('physicstutors') {
+                    withSonarQubeEnv('sonarserver') {
+                         sh 'mvn sonar:sonar'
+                    }
+                }
+            }
+        }
+
+        stage('Quality Gate') {
+            steps {
+                timeout(time: 2, unit: 'MINUTES') {
+                    waitForQualityGate abortPipeline: true
+                }
+            }
+        }
         
         stage('Deploy to Tomcat Web Server') {
             steps {
