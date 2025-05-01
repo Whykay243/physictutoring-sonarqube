@@ -17,7 +17,7 @@ pipeline {
             steps {
                 dir('physicstutors') {
                     withSonarQubeEnv('sonarserver') {
-                         sh 'mvn sonar:sonar'
+                         sh 'mvn -f physicstutors/pom.xml sonar:sonar'
                     }
                 }
             }
