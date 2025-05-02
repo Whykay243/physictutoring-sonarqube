@@ -135,7 +135,7 @@ resource "aws_instance" "tomcat_server" {
 # Sonaqube Server
 resource "aws_instance" "sonarqube_server" {
   ami                         = data.aws_ami.ubuntu.id
-  instance_type               = "t3.medium"          # upgraded from t2.micro
+  instance_type               = "t3.xlarge"          # upgraded from t2.micro
   subnet_id                   = module.vpc.public_subnets[2]
   vpc_security_group_ids      = [aws_security_group.web_sg.id]
   key_name                    = "whykayKP"
