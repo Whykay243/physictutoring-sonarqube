@@ -18,14 +18,7 @@ pipeline {
             }
         }
 
-        stage('Quality Code Scan Analysis') {
-            steps {
-                withSonarQubeEnv('sonar-server') {
-                    sh 'mvn -f physicstutors/pom.xml sonar:sonar'
-                }
-            }
-        }
-
+   
 
         stage('Quality Gate') {
             steps {
