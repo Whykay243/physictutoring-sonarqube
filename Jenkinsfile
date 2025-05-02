@@ -18,13 +18,18 @@ pipeline {
             }
         }
 
-        stage('Quality Code Scan Analysis') {
-            steps {
-                withSonarQubeEnv('sonar-server') {
-                    sh 'mvn -f physicstutors/pom.xml sonar:sonar'
-                }
+       stage('Quality Code Scan Analysis') {
+    steps {
+        timeout(time: 5, unit: 'MINUTES') {
+            withSonarQubeEnv('sonar-server') {
+                sh '''
+                  export JAVA_OPTS="-Dorg.jenkinsci.plugins.durabletask.BourneShellScript.HEARTBEAT_CHECK_INTERVAL=86400"
+                  mvn -f physicstutors/pom.xml sonar:sonar -Dsonar.verbose=true
+                '''
             }
         }
+    }
+}
 
 
         stage('Quality Gate') {
