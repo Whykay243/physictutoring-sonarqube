@@ -19,7 +19,7 @@
       <scope>test</scope>
     </dependency>
 
-    <!-- Add Servlet API for a web application -->
+    <!-- Add Servlet API for a web application if you use servlets -->
     <dependency>
       <groupId>javax.servlet</groupId>
       <artifactId>javax.servlet-api</artifactId>
@@ -52,8 +52,8 @@
         <artifactId>maven-war-plugin</artifactId>
         <version>3.3.1</version>
         <configuration>
-          <!-- Specify web.xml if needed (otherwise Maven will create one) -->
-          <webxml>src/main/webapp/WEB-INF/web.xml</webxml>
+          <!-- Remove web.xml configuration if you don't need it -->
+          <!-- <webxml>src/main/webapp/WEB-INF/web.xml</webxml> -->
         </configuration>
       </plugin>
     </plugins>
