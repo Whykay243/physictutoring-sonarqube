@@ -1,17 +1,24 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-  xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/maven-v4_0_0.xsd">
+<project xmlns="http://maven.apache.org/POM/4.0.0" 
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 
+                             http://maven.apache.org/maven-v4_0_0.xsd">
   <modelVersion>4.0.0</modelVersion>
 
   <groupId>org.physicstutors</groupId>
-  <artifactId>physicstutors-1.0.0</artifactId>
+  <artifactId>physicstutors</artifactId>
   <packaging>war</packaging>
   <version>1.0-SNAPSHOT</version>
   <name>physicstutors Maven Webapp</name>
   <url>http://maven.apache.org</url>
 
+  <properties>
+    <sonar.projectKey>physicstutors</sonar.projectKey>
+    <sonar.host.url>http://YOUR-SONARQUBE-IP:9000</sonar.host.url>
+    <sonar.login>YOUR_SONAR_TOKEN</sonar.login>
+  </properties>
+
   <dependencies>
-    <!-- Updated to JUnit 4 for modern testing -->
     <dependency>
       <groupId>junit</groupId>
       <artifactId>junit</artifactId>
@@ -19,7 +26,6 @@
       <scope>test</scope>
     </dependency>
 
-    <!-- Add Servlet API for a web application if you use servlets -->
     <dependency>
       <groupId>javax.servlet</groupId>
       <artifactId>javax.servlet-api</artifactId>
@@ -31,30 +37,24 @@
   <build>
     <finalName>physicstutors</finalName>
 
-    <!-- Clean plugin to ensure a clean build -->
     <plugins>
       <plugin>
         <groupId>org.apache.maven.plugins</groupId>
         <artifactId>maven-clean-plugin</artifactId>
         <version>3.1.0</version>
-        <executions>
-          <execution>
-            <goals>
-              <goal>clean</goal>
-            </goals>
-          </execution>
-        </executions>
       </plugin>
 
-      <!-- Maven WAR Plugin to package your app as a WAR -->
       <plugin>
         <groupId>org.apache.maven.plugins</groupId>
         <artifactId>maven-war-plugin</artifactId>
         <version>3.3.1</version>
-        <configuration>
-          <!-- Remove web.xml configuration if you don't need it -->
-          <!-- <webxml>src/main/webapp/WEB-INF/web.xml</webxml> -->
-        </configuration>
+      </plugin>
+
+      <!-- ✅ Sonar Maven Plugin -->
+      <plugin>
+        <groupId>org.sonarsource.scanner.maven</groupId>
+        <artifactId>sonar-maven-plugin</artifactId>
+        <version>3.9.1.2184</version>
       </plugin>
     </plugins>
   </build>
