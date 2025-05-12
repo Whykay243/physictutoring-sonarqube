@@ -75,7 +75,14 @@ fi
 # Extract SonarQube
 sudo unzip -o sonarqube-10.4.1.88267.zip
 sudo mv sonarqube-10.4.1.88267 sonarqube
+
+# Change ownership to the user running the script
+echo "Changing ownership of SonarQube files..."
 sudo chown -R ubuntu:ubuntu /opt/sonarqube
+
+# Set permissions for SonarQube log directory
+echo "Setting permissions for SonarQube logs directory..."
+sudo chmod -R 755 /opt/sonarqube/logs
 
 # Set JAVA_HOME environment variable
 echo "Setting JAVA_HOME environment variable..."
