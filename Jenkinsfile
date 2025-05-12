@@ -2,55 +2,50 @@ pipeline {
     agent any
 
     environment {
-        // Define environment variables if necessary
-        MAVEN_HOME = '/usr/share/maven'
-        JAVA_HOME = '/usr/lib/jvm/java-17-openjdk-amd64'
-        SONARQUBE_URL = 'http://<your-sonarqube-ip>:9000'
-        TOMCAT_HOST = 'http://<your-tomcat-ip>:8080'
-        TOMCAT_USER = 'admin'
-        TOMCAT_PASS = 'admin' // Change to your actual Tomcat credentials
+        // Set the SonarQube server name configured in Jenkins
+        SONARQUBE_SERVER = 'sonar-server'  // Name of your SonarQube server in Jenkins global config
     }
 
     stages {
-        stage('Build') {
+        stage('Test stage 1') {
             steps {
-                echo 'Building with Maven...'
-                sh "'${MAVEN_HOME}/bin/mvn' clean install"
+                sh 'cd SampleWebApp mvn test'
             }
         }
 
-        stage('SonarQube Scan') {
+        stage('SonarQube Analysis') {
             steps {
-                echo 'Running SonarQube scan...'
                 script {
-                    // Ensure SonarQube is configured as a global tool
-                    def scannerHome = tool name: 'SonarQube Scanner', type: 'ToolType'
-                    sh "'${scannerHome}/bin/sonar-scanner' -Dsonar.projectKey=my-project -Dsonar.sources=src"
+                    // Run SonarQube analysis with Maven
+                    withSonarQubeEnv(SONARQUBE_SERVER) {
+                        sh 'cd SampleWebApp && mvn clean verify sonar:sonar'
+                    }
                 }
             }
         }
 
-        stage('Deploy to Tomcat') {
+        stage('Quality Gate Check') {
             steps {
-                echo 'Deploying to Tomcat...'
                 script {
-                    // Here you might deploy a WAR file
-                    sh "curl -u ${TOMCAT_USER}:${TOMCAT_PASS} -T target/my-webapp.war ${TOMCAT_HOST}/manager/text/deploy?path=/my-webapp&update=true"
+                    // Wait for SonarQube quality gate to pass
+                    def qualityGate = waitForQualityGate()
+                    if (qualityGate.status != 'OK') {
+                        error "Quality Gate failed: ${qualityGate.status}"  // Fail the build if the quality gate is not OK
+                    }
                 }
             }
         }
-    }
 
-    post {
-        always {
-            echo 'Cleaning up...'
-            // Clean up any temporary files if necessary
+        stage('Compile the Java Code stage 2') {
+            steps {
+                sh 'cd SampleWebApp && mvn clean package'
+            }
         }
-        success {
-            echo 'Pipeline completed successfully.'
-        }
-        failure {
-            echo 'Pipeline failed.'
+
+        stage('Deploy to Tomcat Web Server') {
+            steps {
+                deploy adapters: [tomcat9(credentialsId: 'sonarserver1', path: '', url: 'http://18.234.200.5:8080/')], contextPath: 'webapp', war: '**/*.war'
+            }
         }
     }
 }
