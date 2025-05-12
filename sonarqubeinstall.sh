@@ -1,66 +1,63 @@
 #!/bin/bash
+
 set -e
 
-# Update system packages
-sudo apt-get update -y
-sudo apt-get upgrade -y
+# Update system
+apt update -y && apt upgrade -y
 
-# Install Java 17 (required for latest SonarQube)
-sudo apt-get install -y openjdk-17-jdk unzip wget
+# Add swap (SonarQube/ES need virtual memory)
+fallocate -l 4G /swapfile
+chmod 600 /swapfile
+mkswap /swapfile
+swapon /swapfile
+echo '/swapfile none swap sw 0 0' >> /etc/fstab
 
-# Create SonarQube user
-sudo useradd -m -d /opt/sonarqube -r -s /bin/bash sonarqube
+# Required sysctl for SonarQube (Elasticsearch)
+sysctl -w vm.max_map_count=262144
+echo 'vm.max_map_count=262144' >> /etc/sysctl.conf
 
-# Install and configure PostgreSQL
-sudo apt-get install -y postgresql postgresql-contrib
+# Install dependencies
+apt install -y openjdk-17-jdk wget unzip postgresql postgresql-contrib maven
 
-# Set PostgreSQL password and create DB
-sudo -u postgres psql -c "CREATE USER sonar WITH ENCRYPTED PASSWORD 'sonar';"
+# Verify Maven installation
+mvn -version
+
+# Setup PostgreSQL
+sudo -u postgres psql -c "CREATE USER sonar WITH PASSWORD 'sonar';"
 sudo -u postgres psql -c "CREATE DATABASE sonarqube OWNER sonar;"
 
-# Enable password auth in pg_hba.conf
-sudo sed -i "s/^local\s\+all\s\+postgres\s\+peer/local all postgres md5/" /etc/postgresql/*/main/pg_hba.conf
-sudo sed -i "s/^local\s\+all\s\+all\s\+peer/local all all md5/" /etc/postgresql/*/main/pg_hba.conf
-echo "listen_addresses = '*'" | sudo tee -a /etc/postgresql/*/main/postgresql.conf
-sudo systemctl restart postgresql
+# Download SonarQube
+cd /opt
+wget https://binaries.sonarsource.com/Distribution/sonarqube/sonarqube-10.4.1.88267.zip
+unzip sonarqube-10.4.1.88267.zip
+mv sonarqube-10.4.1.88267 sonarqube
+chown -R ubuntu:ubuntu /opt/sonarqube
 
-# Download and set up SonarQube
-SONAR_VERSION=10.4.1.88267
-wget https://binaries.sonarsource.com/Distribution/sonarqube/sonarqube-${SONAR_VERSION}.zip
-unzip sonarqube-${SONAR_VERSION}.zip
-sudo mv sonarqube-${SONAR_VERSION}/* /opt/sonarqube/
-sudo chown -R sonarqube:sonarqube /opt/sonarqube
-
-# Configure SonarQube to connect to PostgreSQL
-sudo sed -i "s|#sonar.jdbc.username=.*|sonar.jdbc.username=sonar|" /opt/sonarqube/conf/sonar.properties
-sudo sed -i "s|#sonar.jdbc.password=.*|sonar.jdbc.password=sonar|" /opt/sonarqube/conf/sonar.properties
-sudo sed -i "s|#sonar.jdbc.url=jdbc:postgresql.*|sonar.jdbc.url=jdbc:postgresql://localhost/sonarqube|" /opt/sonarqube/conf/sonar.properties
-
-# Set system limits for SonarQube
-echo 'sonarqube   -   nofile   65536' | sudo tee -a /etc/security/limits.conf
-echo 'sonarqube   -   nproc    4096' | sudo tee -a /etc/security/limits.conf
+# Configure database
+cat <<EOF >> /opt/sonarqube/conf/sonar.properties
+sonar.jdbc.username=sonar
+sonar.jdbc.password=sonar
+sonar.jdbc.url=jdbc:postgresql://localhost/sonarqube
+EOF
 
 # Create systemd service
-sudo bash -c 'cat <<EOF > /etc/systemd/system/sonarqube.service
+cat <<EOF > /etc/systemd/system/sonarqube.service
 [Unit]
 Description=SonarQube service
-After=network.target postgresql.service
+After=network.target
 
 [Service]
 Type=forking
 ExecStart=/opt/sonarqube/bin/linux-x86-64/sonar.sh start
 ExecStop=/opt/sonarqube/bin/linux-x86-64/sonar.sh stop
-User=sonarqube
-Group=sonarqube
-Restart=always
-LimitNOFILE=65536
-LimitNPROC=4096
+User=ubuntu
+Restart=on-failure
 
 [Install]
 WantedBy=multi-user.target
-EOF'
+EOF
 
-# Enable and start the SonarQube service
-sudo systemctl daemon-reload
-sudo systemctl enable sonarqube
-sudo systemctl start sonarqube
+# Enable service
+systemctl daemon-reload
+systemctl enable sonarqube
+systemctl start sonarqube
