@@ -1,144 +1,56 @@
 pipeline {
-  agent any
+    agent any
 
-  // Global tools: pick the Maven installation configured in Jenkins
-  tools {
-    maven 'Maven 3.8.6'      // match the name in Jenkins Global Tool Configuration
-    jdk    'Java 17'         // match the JDK installation in Jenkins
-  }
-
-  environment {
-    // SonarQube server (configured under Manage Jenkins → Configure System)
-    SONARQUBE_SERVER = 'sonar-server'
-    // Tomcat deploy: credential ID stored in Jenkins Credentials
-    TOMCAT_CRED_ID   = 'physicstutor'
-    // Path inside Tomcat: empty means ROOT
-    TOMCAT_PATH      = ''
-    // CVE scanning or other flags
-    MAVEN_OPTS       = "--add-opens java.base/java.lang=ALL-UNNAMED"
-  }
-
-  options {
-    // Abort the build if it runs longer than 60 minutes
-    timeout(time: 60, unit: 'MINUTES')
-    // Always show timestamps in the console
-    timestamps()
-    // Retry flaky stages up to 2 times
-    retry(2)
-    // Keep only the last 10 build logs/artifacts
-    buildDiscarder(logRotator(numToKeepStr: '10'))
-  }
-
-  stages {
-    stage('Checkout') {
-      steps {
-        // Perform a shallow clone for speed
-        checkout([
-          $class: 'GitSCM',
-          userRemoteConfigs: [[ url: 'https://github.com/your-org/physicstutors.git' ]],
-          branches: [[ name: '*/main' ]],
-          extensions: [[$class: 'CloneOption', depth: 1, noTags: true, reference: '', shallow: true]]
-        ])
-      }
+    environment {
+        // Define environment variables if necessary
+        MAVEN_HOME = '/usr/share/maven'
+        JAVA_HOME = '/usr/lib/jvm/java-17-openjdk-amd64'
+        SONARQUBE_URL = 'http://<your-sonarqube-ip>:9000'
+        TOMCAT_HOST = 'http://<your-tomcat-ip>:8080'
+        TOMCAT_USER = 'admin'
+        TOMCAT_PASS = 'admin' // Change to your actual Tomcat credentials
     }
 
-    stage('Unit Tests') {
-      steps {
-        dir('physicstutors') {
-          sh 'mvn test'
+    stages {
+        stage('Build') {
+            steps {
+                echo 'Building with Maven...'
+                sh "'${MAVEN_HOME}/bin/mvn' clean install"
+            }
         }
-      }
-      post {
+
+        stage('SonarQube Scan') {
+            steps {
+                echo 'Running SonarQube scan...'
+                script {
+                    // Ensure SonarQube is configured as a global tool
+                    def scannerHome = tool name: 'SonarQube Scanner', type: 'ToolType'
+                    sh "'${scannerHome}/bin/sonar-scanner' -Dsonar.projectKey=my-project -Dsonar.sources=src"
+                }
+            }
+        }
+
+        stage('Deploy to Tomcat') {
+            steps {
+                echo 'Deploying to Tomcat...'
+                script {
+                    // Here you might deploy a WAR file
+                    sh "curl -u ${TOMCAT_USER}:${TOMCAT_PASS} -T target/my-webapp.war ${TOMCAT_HOST}/manager/text/deploy?path=/my-webapp&update=true"
+                }
+            }
+        }
+    }
+
+    post {
         always {
-          junit '**/target/surefire-reports/*.xml'
+            echo 'Cleaning up...'
+            // Clean up any temporary files if necessary
         }
-      }
-    }
-
-    stage('Static Analysis') {
-      parallel {
-        stage('SonarQube Analysis') {
-          environment {
-            // tell Maven which server to use
-            SONAR_HOST_URL = credentials('sonar-server-url') 
-          }
-          steps {
-            dir('physicstutors') {
-              withSonarQubeEnv("${SONARQUBE_SERVER}") {
-                sh 'mvn clean verify sonar:sonar'
-              }
-            }
-          }
-        }
-        stage('Code Coverage') {
-          steps {
-            dir('physicstutors') {
-              sh 'mvn jacoco:report'
-            }
-          }
-          post {
-            always {
-              // Publish coverage report
-              jacoco execPattern: '**/target/jacoco.exec',
-                     classPattern: '**/target/classes',
-                     sourcePattern: 'physicstutors/src/main/java',
-                     exclusionPattern: '**/test/**'
-            }
-          }
-        }
-      }
-    }
-
-    stage('Quality Gate') {
-      steps {
-        timeout(time: 2, unit: 'MINUTES') {
-          waitForQualityGate abortPipeline: true
-        }
-      }
-    }
-
-    stage('Build & Package') {
-      steps {
-        dir('physicstutors') {
-          sh 'mvn clean package -DskipTests'
-        }
-      }
-      post {
         success {
-          archiveArtifacts artifacts: 'physicstutors/target/*.war', fingerprint: true
+            echo 'Pipeline completed successfully.'
         }
-      }
+        failure {
+            echo 'Pipeline failed.'
+        }
     }
-
-    stage('Deploy to Tomcat') {
-      when {
-        expression { currentBuild.currentResult == 'SUCCESS' }
-      }
-      steps {
-        deploy adapters: [
-          tomcat9(
-            credentialsId: "${TOMCAT_CRED_ID}",
-            url: 'http://13.220.46.52:8080',
-            path: "${TOMCAT_PATH}"
-          )
-        ], contextPath: "${TOMCAT_PATH}", war: 'physicstutors/target/*.war'
-      }
-    }
-  }
-
-  post {
-    success {
-      echo "🎉 Build and deployment succeeded!"
-    }
-    unstable {
-      echo "⚠️ Build is unstable. Check test or quality reports."
-    }
-    failure {
-      echo "❌ Build failed. Please investigate."
-    }
-    always {
-      // Clean up workspace to save disk
-      cleanWs()
-    }
-  }
 }

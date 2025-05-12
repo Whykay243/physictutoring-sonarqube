@@ -5,7 +5,7 @@ set -e
 # Update and install required packages
 sudo apt-get update -y
 sudo apt-get upgrade -y
-sudo apt-get install -y wget unzip software-properties-common
+sudo apt-get install -y wget unzip software-properties-common curl gnupg
 
 # Install Java 17 (required by SonarQube 10.4+)
 sudo apt-get install -y openjdk-17-jdk
@@ -32,14 +32,27 @@ CREATE DATABASE sonarqube OWNER sonarqube;
 ALTER USER sonarqube CREATEDB;
 EOF
 
-# Download and extract SonarQube
-SONARQUBE_VERSION="10.4.1.88267"
-SONARQUBE_ZIP="sonarqube-$SONARQUBE_VERSION.zip"
-SONARQUBE_DIR="sonarqube-$SONARQUBE_VERSION"
-SONARQUBE_URL="https://binaries.sonarsource.com/Distribution/sonarqube/$SONARQUBE_ZIP"
+# Get latest SonarQube release from GitHub with fallback
+echo "Fetching latest SonarQube release from GitHub..."
+LATEST_RELEASE=$(curl -s https://api.github.com/repos/SonarSource/sonarqube/releases/latest)
 
-wget "$SONARQUBE_URL"
-unzip "$SONARQUBE_ZIP"
+SONARQUBE_ZIP=$(echo "$LATEST_RELEASE" | grep "browser_download_url.*sonarqube-.*linux.*zip" | cut -d '"' -f 4)
+
+# Fallback to known version if GitHub fails or returns empty
+if [ -z "$SONARQUBE_ZIP" ]; then
+    echo "GitHub API failed or rate limited. Falling back to SonarQube 10.4.1.88267."
+    SONARQUBE_VERSION="10.4.1.88267"
+    SONARQUBE_ZIP="https://binaries.sonarsource.com/Distribution/sonarqube/sonarqube-${SONARQUBE_VERSION}.zip"
+    SONARQUBE_FILE="sonarqube-${SONARQUBE_VERSION}.zip"
+    SONARQUBE_DIR="sonarqube-${SONARQUBE_VERSION}"
+else
+    SONARQUBE_FILE=$(basename "$SONARQUBE_ZIP")
+    SONARQUBE_DIR="${SONARQUBE_FILE%.zip}"
+fi
+
+echo "Downloading SonarQube: $SONARQUBE_FILE"
+wget "$SONARQUBE_ZIP"
+unzip "$SONARQUBE_FILE"
 sudo mv "$SONARQUBE_DIR" /opt/sonarqube
 
 # Update sonar.properties
@@ -58,7 +71,7 @@ ulimit -n 65536
 ulimit -u 4096
 
 # Set permissions and start SonarQube
-sudo useradd -r -s /bin/false sonarqube
+sudo useradd -r -s /bin/false sonarqube || true
 sudo chown -R sonarqube:sonarqube /opt/sonarqube
 
 sudo -u sonarqube bash -c "/opt/sonarqube/bin/linux-x86-64/sonar.sh start"
