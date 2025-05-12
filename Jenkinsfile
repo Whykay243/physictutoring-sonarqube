@@ -9,7 +9,7 @@ pipeline {
     stages {
         stage('Test stage 1') {
             steps {
-                sh 'cd SampleWebApp mvn test'
+                sh 'cd physicstutors mvn test'
             }
         }
 
@@ -18,7 +18,7 @@ pipeline {
                 script {
                     // Run SonarQube analysis with Maven
                     withSonarQubeEnv(SONARQUBE_SERVER) {
-                        sh 'cd SampleWebApp && mvn clean verify sonar:sonar'
+                        sh 'cd physicstutors && mvn clean verify sonar:sonar'
                     }
                 }
             }
@@ -38,7 +38,7 @@ pipeline {
 
         stage('Compile the Java Code stage 2') {
             steps {
-                sh 'cd SampleWebApp && mvn clean package'
+                sh 'cd physicstutors && mvn clean package'
             }
         }
 
