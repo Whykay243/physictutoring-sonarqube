@@ -77,22 +77,24 @@ sudo unzip -o sonarqube-10.4.1.88267.zip
 sudo mv sonarqube-10.4.1.88267 sonarqube
 
 # Change ownership to the user running the script
-echo "Changing ownership of SonarQube files..."
+# Fix permissions to avoid permission errors
+echo "Fixing SonarQube file and log permissions..."
 sudo chown -R ubuntu:ubuntu /opt/sonarqube
-
-# Set permissions for SonarQube log directory
-echo "Setting permissions for SonarQube logs directory..."
 sudo chmod -R 755 /opt/sonarqube/logs
 
 # Set JAVA_HOME environment variable
 echo "Setting JAVA_HOME environment variable..."
 export JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64
 
-# Start SonarQube service manually (to verify)
+# Start SonarQube
 echo "Starting SonarQube..."
 cd /opt/sonarqube/bin/linux-x86-64
 ./sonar.sh start
-tail -f /opt/sonarqube/logs/sonar.log
+
+# Wait and show logs
+sleep 5
+echo "Tailing SonarQube logs..."
+tail -n 50 /opt/sonarqube/logs/sonar.log
 
 # Check SonarQube status
 echo "Checking SonarQube status..."
