@@ -33,7 +33,7 @@ pipeline {
 
         stage('Deploy to Tomcat') {
             steps {
-                deploy adapters: [tomcat9(credentialsId: 'sonarserver1', path: '', url: 'http://18.234.200.5:8080/')], 
+                deploy adapters: [tomcat9(credentialsId: 'tomcat', path: '', url: 'http://18.206.46.217:8080/')], 
                        contextPath: 'webapp', 
                        war: 'physicstutors/target/physicstutors.war'
             }
