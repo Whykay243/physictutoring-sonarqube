@@ -161,6 +161,6 @@ output "tomcat_url" {
 }
 
 output "sonarqube_url" {
-  description = "URL to access SonarQube"
+  description = "URL to access Sonarqube"
   value       = "http://${aws_instance.sonarqube_server.public_ip}:9000"
 }
