@@ -21,11 +21,8 @@ pipeline {
         stage('SonarQube Analysis') {
             steps {
                 dir('physicstutors') {
-                    script {
-                        def scannerHome = tool name: 'SonarQubeScanner', type: 'hudson.plugins.sonar.SonarRunnerInstallation'
-                        withSonarQubeEnv('sonar-server') {
-                            sh "${scannerHome}/bin/sonar-scanner"
-                        }
+                    withSonarQubeEnv('sonar-server') {
+                        sh 'mvn sonar:sonar'
                     }
                 }
             }
@@ -33,9 +30,15 @@ pipeline {
 
         stage('Deploy to Tomcat') {
             steps {
-                deploy adapters: [tomcat9(credentialsId: 'tomcat', path: '', url: 'http://18.206.46.217:8080/')], 
-                       contextPath: 'webapp', 
-                       war: 'physicstutors/target/physicstutors.war'
+                deploy adapters: [
+                    tomcat9(
+                        credentialsId: 'tomcat', 
+                        path: '', 
+                        url: 'http://18.206.46.217:8080/'
+                    )
+                ], 
+                contextPath: 'webapp', 
+                war: 'physicstutors/target/physicstutors.war'
             }
         }
     }
