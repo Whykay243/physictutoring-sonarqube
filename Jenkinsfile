@@ -19,22 +19,23 @@ pipeline {
         }
 
         stage('SonarQube Analysis') {
-            steps {
-                dir('physicstutors') {
-                    withSonarQubeEnv('sonar-server') {
-                        sh 'mvn sonar:sonar'
-                    }
-                }
+    steps {
+        dir('physicstutors') {
+            withSonarQubeEnv('sonar-server') {
+                // Pass the SonarQube token directly in the Maven command
+                sh 'mvn sonar:sonar -Dsonar.login=tomcatuser'
             }
         }
+    }
+}
 
         stage('Deploy to Tomcat') {
             steps {
                 deploy adapters: [
                     tomcat9(
-                        credentialsId: 'tomcat', 
+                        credentialsId: 'tomcatcredentials', 
                         path: '', 
-                        url: 'http://18.206.46.217:8080/'
+                        url: 'http://http://44.211.244.192:8080/'
                     )
                 ], 
                 contextPath: 'webapp', 
