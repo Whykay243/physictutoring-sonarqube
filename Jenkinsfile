@@ -30,18 +30,14 @@ pipeline {
             }
         }
 
-        stage('Deploy to Tomcat') {
+    stage('Deploy to Tomcat') {
             steps {
                 deploy adapters: [
-                    tomcat9(
-                        credentialsId: 'tomcatuser', 
-                        path: '', 
-                        url: 'http://http://52.55.108.24:8080/'
-                    )
-                ], 
-                contextPath: 'webapp', 
-                war: 'physicstutors/target/physicstutors.war'
-            }
-        }
-    }
-}
+    tomcat9(
+        credentialsId: 'tomcatuser', 
+        path: '', 
+        url: 'http://52.55.108.24:8080/'
+    )
+], 
+contextPath: 'webapp', 
+war: '**/*.war'
