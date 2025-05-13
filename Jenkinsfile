@@ -18,7 +18,7 @@ pipeline {
             }
         }
 
-    stage('SonarQube Analysis') {
+        stage('SonarQube Analysis') {
             steps {
                 dir('physicstutors') {
                     withSonarQubeEnv('sonar-server') {
@@ -30,14 +30,18 @@ pipeline {
             }
         }
 
-    stage('Deploy to Tomcat') {
+        stage('Deploy to Tomcat') {
             steps {
                 deploy adapters: [
-    tomcat9(
-        credentialsId: 'tomcatuser', 
-        path: '', 
-        url: 'http://52.55.108.24:8080/'
-    )
-], 
-contextPath: 'webapp', 
-war: '**/*.war'
+                    tomcat9(
+                        credentialsId: 'tomcatuser', 
+                        path: '', 
+                        url: 'http://52.55.108.24:8080'
+                    )
+                ], 
+                contextPath: 'webapp', 
+                war: 'physicstutors/target/physicstutors.war'
+            }
+        }
+    }
+}
