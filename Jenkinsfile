@@ -18,16 +18,17 @@ pipeline {
             }
         }
 
-        stage('SonarQube Analysis') {
-    steps {
-        dir('physicstutors') {
-            withSonarQubeEnv('sonar-server') {
-                // Pass the SonarQube token directly in the Maven command
-                sh 'mvn sonar:sonar -Dsonar.login=tomcatuser'
+    stage('SonarQube Analysis') {
+            steps {
+                dir('physicstutors') {
+                    withSonarQubeEnv('sonar-server') {
+                        withCredentials([string(credentialsId: 'sonarqube-token', variable: 'SONAR_TOKEN')]) {
+                            sh 'mvn sonar:sonar -Dsonar.login=$SONAR_TOKEN'
+                        }
+                    }
+                }
             }
         }
-    }
-}
 
         stage('Deploy to Tomcat') {
             steps {
