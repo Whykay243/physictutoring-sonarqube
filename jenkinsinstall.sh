@@ -1,74 +1,51 @@
 #!/bin/bash
-exec > /var/log/user-data.log 2>&1
-set -x
-set -euo pipefail
 
-# 1. Update and install prerequisites
+# Log output
+exec > /var/log/jenkins-install.log 2>&1
+set -euxo pipefail
+
+# Update system
 apt-get update -y
-DEBIAN_FRONTEND=noninteractive \
-  apt-get install -y --no-install-recommends \
-    openjdk-17-jdk curl gnupg2 apt-transport-https ufw maven
 
-# 2. Define JAVA_HOME for tools that need it
-echo "export JAVA_HOME=$(dirname $(dirname $(readlink -f $(which javac))))" > /etc/profile.d/java_home.sh
-chmod +x /etc/profile.d/java_home.sh
-source /etc/profile.d/java_home.sh
+# Install Java
+apt-get install -y openjdk-17-jdk
 
-# 3. Add the Jenkins GPG key securely (no apt-key)
-curl -fsSL https://pkg.jenkins.io/debian/jenkins.io-2023.key \
-  | gpg --dearmor \
-    --output /usr/share/keyrings/jenkins-keyring.gpg
+# Add Jenkins GPG key and repository
+curl -fsSL https://pkg.jenkins.io/debian-stable/jenkins.io-2023.key | tee /usr/share/keyrings/jenkins-keyring.asc > /dev/null
+echo deb [signed-by=/usr/share/keyrings/jenkins-keyring.asc] https://pkg.jenkins.io/debian-stable binary/ > /etc/apt/sources.list.d/jenkins.list
 
-# 4. Add Jenkins apt repository signed by our keyring
-echo \
-  "deb [signed-by=/usr/share/keyrings/jenkins-keyring.gpg] \
-   https://pkg.jenkins.io/debian-stable binary/" \
-  > /etc/apt/sources.list.d/jenkins.list
-
-# 5. Install Jenkins
+# Install Jenkins and Maven
 apt-get update -y
-apt-get install -y jenkins
+apt-get install -y jenkins maven
 
-# 6. Enable and start Jenkins
+# Create Groovy script to skip setup wizard and create admin user
+mkdir -p /var/lib/jenkins/init.groovy.d
+
+cat <<'EOF' > /var/lib/jenkins/init.groovy.d/basic-security.groovy
+#!groovy
+
+import jenkins.model.*
+import hudson.security.*
+
+def instance = Jenkins.getInstance()
+
+println "--> creating local user 'admin'"
+
+def hudsonRealm = new HudsonPrivateSecurityRealm(false)
+hudsonRealm.createAccount("admin", "admin123")
+instance.setSecurityRealm(hudsonRealm)
+
+def strategy = new FullControlOnceLoggedInAuthorizationStrategy()
+strategy.setAllowAnonymousRead(false)
+instance.setAuthorizationStrategy(strategy)
+
+instance.save()
+EOF
+
+# Set correct permissions
+chown -R jenkins:jenkins /var/lib/jenkins/init.groovy.d
+
+# Start Jenkins
+systemctl daemon-reexec
 systemctl enable jenkins
-systemctl start jenkins
-
-# 7. Wait for Jenkins to fully start
-timeout=120
-count=0
-while ! curl -s http://localhost:8080/login >/dev/null; do
-  ((count++)) || true
-  if [ "$count" -ge "$timeout" ]; then
-    echo "Jenkins did not start within $timeout seconds" >&2
-    exit 1
-  fi
-  sleep 5
-done
-
-# 8. Retrieve initial admin password for easy access
-ADMIN_PWD_FILE=/home/ubuntu/jenkins-password.txt
-cp /var/lib/jenkins/secrets/initialAdminPassword "$ADMIN_PWD_FILE"
-chown ubuntu:ubuntu "$ADMIN_PWD_FILE"
-chmod 600 "$ADMIN_PWD_FILE"
-
-# 9. Pre-install commonly used plugins via Jenkins CLI
-JCLI=/usr/local/bin/jenkins-cli.jar
-JENKINS_URL=http://localhost:8080
-wget -q -O "$JCLI" "${JENKINS_URL}/jnlpJars/jenkins-cli.jar"
-chmod +x "$JCLI"
-PLUGINS=(git workflow-aggregator credentials-binding docker-workflow)
-java -jar "$JCLI" -s "$JENKINS_URL" install-plugin "${PLUGINS[@]}" --restart
-
-# 10. Harden UFW firewall
-ufw default deny incoming
-ufw default allow outgoing
-ufw allow OpenSSH comment 'SSH access'
-ufw allow 8080 comment 'Jenkins UI'
-ufw logging on
-ufw --force enable
-
-# 11. Cleanup apt cache
-apt-get clean
-rm -rf /var/lib/apt/lists/*
-
-echo "User data script completed successfully on $(date)"
+systemctl restart jenkins

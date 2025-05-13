@@ -44,4 +44,8 @@ pipeline {
             }
         }
     }
+<<<<<<< HEAD
 }
+=======
+}
+>>>>>>> 6b9d12d (working and updated files)

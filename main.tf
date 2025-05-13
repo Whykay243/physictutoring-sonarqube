@@ -103,7 +103,7 @@ data "aws_ami" "ubuntu" {
 
 resource "aws_instance" "jenkins_server" {
   ami                         = data.aws_ami.ubuntu.id
-  instance_type               = "t2.micro"
+  instance_type               = "t3.xlarge"
   subnet_id                   = module.vpc.public_subnets[0]
   vpc_security_group_ids      = [aws_security_group.web_sg.id]
   key_name                    = "whykayKP"   # Use a single key
