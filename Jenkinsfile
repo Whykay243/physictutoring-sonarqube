@@ -44,7 +44,7 @@ pipeline {
                     tomcat9(
                         credentialsId: 'tomcatmanager', 
                         path: '', 
-                        url: 'http://52.55.108.24:8080'
+                        url: 'http://3.239.191.141:8080'
                     )
                 ], 
                 contextPath: 'webapp', 
